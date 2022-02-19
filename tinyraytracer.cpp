@@ -59,6 +59,21 @@ struct Sphere
             return false;
         return true;
     }
+
+    bool ray_intersect2(const Vec3f &orig, const Vec3f &dir, float &t0, float &t1) const {
+        Vec3f L = center - orig;
+        float tca = L * dir;
+        float d2 = L * L - tca * tca;
+        if (d2 > radius * radius)
+             return false;
+        float thc = sqrtf(radius * radius - d2);
+        t0 = tca - thc;
+        t1 = tca + thc;
+        if(t1 < 0) {
+          return false;
+        }
+        return true;
+    }
 };
 
 Vec3f reflect(const Vec3f &I, const Vec3f &N)
@@ -104,7 +119,46 @@ bool scene_intersect(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphe
             material.diffuse_color = (int(.5 * hit.x + 1000) + int(.5 * hit.z)) & 1 ? Vec3f(.3, .3, .3) : Vec3f(.3, .2, .1);
         }
     }
-    return std::min(spheres_dist, checkerboard_dist) < 1000;
+
+    float duck_dist = std::numeric_limits<float>::max();
+    for(size_t fi=0; fi < duck.nfaces(); fi++){
+        float dist_tr;
+        if(duck.ray_triangle_intersect(fi, orig, dir, duck_dist) && dist_tr < duck_dist ){
+            duck_dist = dist_tr;
+            hit = orig + dir*dist_tr;
+            Vec3f vP0 = duck.point(duck.vert(fi, 0));
+            Vec3f vP1 = duck.point(duck.vert(fi, 1));
+            Vec3f vP2 = duck.point(duck.vert(fi, 2));
+            N = cross(vP1-vP0,vP2-vP0).normalize();
+            material = Material(1.5, Vec4f(0.0,  0.5, 0.1, 0.8), Vec3f(0.6, 0.7, 0.8),  125.);
+        }
+    }
+
+    Sphere star = Sphere(Vec3f(-2, 6.5, -18), 3, Material(1.0, Vec4f(0.9, 0.1, 0.0, 0.0), Vec3f(0.3, 0.3, 0.3),   10.));
+    Sphere hole = Sphere(Vec3f(-1.4, 6.2, -16), 1.1, Material(1.0, Vec4f(0.9, 0.1, 0.0, 0.0), Vec3f(0.3, 0.3, 0.3),   10.));
+    float dist_i_t0;
+    float dist_i_t1;
+    if (hole.ray_intersect2(orig, dir, dist_i_t0, dist_i_t1) && dist_i_t0 < spheres_dist) {
+        hit = orig + dir*dist_i_t1;
+        if (sqrt(pow(star.center.x - hit.x, 2) + pow(star.center.y - hit.y, 2) + pow(star.center.z - hit.z, 2)) <= star.radius) {
+            spheres_dist = dist_i_t1;
+            hit = hit;
+            N = (-(hit - hole.center)).normalize();
+            material = hole.material;
+        }
+    }
+    float dist_i;
+    if (star.ray_intersect(orig, dir, dist_i) && dist_i < spheres_dist) {
+        hit = orig + dir*dist_i;
+        if (sqrt(pow(hole.center.x - hit.x, 2) + pow(hole.center.y - hit.y, 2) + pow(hole.center.z - hit.z, 2)) >= hole.radius) {
+          spheres_dist = dist_i;
+          hit = hit;
+          N = (hit - star.center).normalize();
+          material = star.material;
+        }
+    }
+
+    return std::min(std::min(spheres_dist, checkerboard_dist), duck_dist) < 1000;
 }
 
 Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, const std::vector<Light> &lights, size_t depth = 0)
